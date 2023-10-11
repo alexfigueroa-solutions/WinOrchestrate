@@ -85,18 +85,12 @@ Log-Message "INFO" "Script has necessary permissions. Proceeding..."
 
 # Check and Install Chocolatey if not present
 Write-Host "Checking for Chocolatey..." -ForegroundColor Cyan
-$chocoInstalled = $false
-try {
-    $chocoCheck = choco --version 2>&1
-    if ($chocoCheck -match "Chocolatey v") {
-        $chocoInstalled = $true
-    }
-}
-catch {
-    $chocoInstalled = $false
-}
 
-if (-not $chocoInstalled) {
+# Check for Chocolatey's executable directly
+$chocoPath = "C:\ProgramData\chocolatey\bin\choco.exe"
+if (Test-Path $chocoPath) {
+    Log-Message "INFO" "Chocolatey is already installed. Proceeding..."
+} else {
     Write-Host "Chocolatey not found. Attempting installation..." -ForegroundColor Yellow
     try {
         Set-ExecutionPolicy Bypass -Scope Process -Force
@@ -108,10 +102,7 @@ if (-not $chocoInstalled) {
         Log-Message "ERROR" "Failed to install Chocolatey. $_"
         return
     }
-} else {
-    Log-Message "INFO" "Chocolatey is installed. Proceeding..."
 }
-
 # Install and verify Docker Desktop
 Show-Progress "Checking and Installing Docker Desktop..." 0
 
@@ -120,17 +111,17 @@ $installationAttempts = 0
 $installationSuccess = $false
 
 while (-not $installationSuccess -and $installationAttempts -lt $maxRetries) {
-    if (-not (choco list --local-only --exact 'docker-desktop' | Select-String -Pattern "^docker-desktop$")) {
-        $installationSuccess = Install-DockerDesktop
-        $installationAttempts++
-
-        if (-not $installationSuccess) {
-            Log-Message "WARN" "Attempt $installationAttempts of $maxRetries to install Docker Desktop failed. Retrying..."
-            Start-Sleep -Seconds 10
+    $isDockerInstalled = choco list --local-only --exact 'docker-desktop' 2>&1
+    if ($isDockerInstalled -notlike "*docker-desktop*") {
+        if ($installationAttempts -eq 0) { # Only try to install once if not detected
+            $installationSuccess = Install-DockerDesktop
+            $installationAttempts++
         } else {
-            $installationSuccess = Verify-DockerDesktop
+            Log-Message "ERROR" "Docker Desktop installation failed on the first attempt. Not retrying."
+            break
         }
     } else {
+        Log-Message "INFO" "Docker Desktop is already installed."
         $installationSuccess = $true
     }
     Show-Progress "Installing Docker Desktop..." (($installationAttempts / $maxRetries) * 100)
